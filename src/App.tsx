@@ -18,6 +18,7 @@ import Sellers from "./pages/sellers/Sellers";
 import Withdrawals from "./pages/withdrawals/Withdrawals";
 import WalletOverview from "./pages/wallet/WalletOverview";
 import DeliveryAssignments from "./pages/delivery/DeliveryAssignments";
+import Notifications from "./pages/notifications/Notifications";
 
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } });
 
@@ -43,6 +44,7 @@ export default function App() {
               <Route path="sellers" element={<Sellers />} />
               <Route path="withdrawals" element={<Withdrawals />} />
               <Route path="wallet" element={<WalletOverview />} />
+              <Route path="notifications" element={<Notifications />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

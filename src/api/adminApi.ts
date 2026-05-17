@@ -1,4 +1,4 @@
-const BASE = "http://localhost:8080";
+const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined ?? "http://localhost:8080").replace(/\/+$/, "");
 
 function getToken() { return localStorage.getItem("adminToken") ?? ""; }
 
@@ -117,6 +117,10 @@ export interface DeliveryPartner {
   id: string; name: string; phone: string; email: string;
   vehicleType: string; vehicleNumber: string; status: string;
   online: boolean; active: boolean; totalDeliveries: number; rating: number; createdAt: string;
+  // KYC documents
+  profileImage?: string; idProofUrl?: string; licenseUrl?: string; vehicleImageUrl?: string;
+  // Bank details
+  bankAccountNumber?: string; bankIfsc?: string; bankAccountHolderName?: string; bankName?: string; upiId?: string;
 }
 export const getDeliveryPartners = () => get<DeliveryPartner[]>("/api/admin/delivery-partners");
 export const createDeliveryPartner = (d: Partial<DeliveryPartner>) => post<DeliveryPartner>("/api/admin/delivery-partners", d);

@@ -3,8 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "../../components/PageHeader";
 import Modal from "../../components/Modal";
 import {
-  FiCheck, FiX, FiEye, FiSearch, FiFilter, FiShoppingCart,
-  FiMapPin, FiPhone, FiMail, FiCalendar, FiFileText
+  FiCheck, FiX, FiEye, FiSearch, FiShoppingCart,
+  FiMapPin, FiPhone, FiMail, FiCalendar, FiFileText, FiAlertCircle, FiCheckCircle
 } from "react-icons/fi";
 import { toast } from "sonner";
 
@@ -23,33 +23,44 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
 const get  = <T,>(path: string) => req<T>("GET", path);
 const post = <T,>(path: string, body?: unknown) => req<T>("POST", path, body);
 
-// Inline types
 interface Seller {
-  id: string;
-  fullName: string;
-  email: string;
-  phone: string;
-  storeName: string;
-  storeCategory: string;
-  description?: string;
-  gstNumber?: string;
-  panNumber?: string;
-  businessRegNumber?: string;
-  addressLine?: string;
-  city?: string;
-  state?: string;
-  pincode?: string;
-  logoUrl?: string;
-  bannerUrl?: string;
-  gstCertificateUrl?: string;
-  panCardUrl?: string;
-  licenseUrl?: string;
-  businessProofUrl?: string;
-  idProofUrl?: string;
-  storeId?: string;
-  status: "PENDING" | "APPROVED" | "REJECTED";
-  rejectionReason?: string;
+  id: string; fullName: string; email: string; phone: string;
+  storeName: string; storeCategory: string; description?: string;
+  gstNumber?: string; panNumber?: string; businessRegNumber?: string;
+  addressLine?: string; city?: string; state?: string; pincode?: string;
+  bankAccountHolderName?: string; bankAccountNumber?: string; bankIfsc?: string; bankName?: string;
+  logoUrl?: string; bannerUrl?: string;
+  gstCertificateUrl?: string; panCardUrl?: string; licenseUrl?: string;
+  businessProofUrl?: string; idProofUrl?: string;
+  storeId?: string; status: "PENDING" | "APPROVED" | "REJECTED"; rejectionReason?: string;
   createdAt: string;
+}
+
+type SellerDocKey =
+  | "idProofUrl"
+  | "panCardUrl"
+  | "logoUrl"
+  | "gstCertificateUrl"
+  | "businessProofUrl"
+  | "licenseUrl";
+
+const DOC_LIST: { key: SellerDocKey; label: string; required: boolean }[] = [
+  { key: "idProofUrl", label: "ID Proof", required: true },
+  { key: "panCardUrl", label: "PAN Card", required: true },
+  { key: "logoUrl", label: "Store Photo / Logo", required: true },
+  { key: "gstCertificateUrl", label: "GST Certificate", required: false },
+  { key: "businessProofUrl", label: "Business Proof", required: false },
+  { key: "licenseUrl", label: "Trade License", required: false },
+];
+
+function sellerDoc(s: Seller, key: SellerDocKey): string | undefined {
+  return s[key];
+}
+
+function kycStatus(s: Seller) {
+  const uploaded = DOC_LIST.filter((d) => !!sellerDoc(s, d.key));
+  const missingRequired = DOC_LIST.filter((d) => d.required && !sellerDoc(s, d.key));
+  return { uploaded: uploaded.length, total: DOC_LIST.length, missingRequired };
 }
 
 const STATUS_STYLES = {
@@ -93,9 +104,7 @@ export default function Sellers() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "sellers"] });
       toast.success("Seller rejected");
-      setRejectModal(null);
-      setViewing(null);
-      setRejectReason("");
+      setRejectModal(null); setViewing(null); setRejectReason("");
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -109,6 +118,15 @@ export default function Sellers() {
       s.email.toLowerCase().includes(search.toLowerCase())
     );
 
+  const handleApprove = (s: Seller) => {
+    const { missingRequired } = kycStatus(s);
+    if (missingRequired.length > 0) {
+      toast.error(`Cannot approve: missing required documents — ${missingRequired.map(d => d.label).join(", ")}`);
+      return;
+    }
+    approveMut.mutate(s.id);
+  };
+
   return (
     <div className="min-h-full">
       <PageHeader
@@ -121,24 +139,15 @@ export default function Sellers() {
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search sellers..."
-              className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-600/30 bg-white"
-            />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search sellers..."
+              className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-600/30 bg-white" />
           </div>
           <div className="flex gap-1.5 flex-wrap">
             {(["ALL", "PENDING", "APPROVED", "REJECTED"] as FilterStatus[]).map(s => (
-              <button
-                key={s}
-                onClick={() => setFilter(s)}
+              <button key={s} onClick={() => setFilter(s)}
                 className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-colors ${
-                  filter === s
-                    ? "bg-primary-600 text-white border-primary-600"
-                    : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
-                }`}
-              >
+                  filter === s ? "bg-primary-600 text-white border-primary-600" : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                }`}>
                 {s === "ALL" ? `All (${sellers.length})` : `${s} (${sellers.filter(x => x.status === s).length})`}
               </button>
             ))}
@@ -159,185 +168,213 @@ export default function Sellers() {
           </div>
         ) : (
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <div className="hidden sm:grid grid-cols-[2fr_1.5fr_1fr_1fr_auto] gap-4 px-5 py-3 border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              <span>Seller</span>
-              <span>Store</span>
-              <span>Category</span>
-              <span>Status</span>
-              <span>Actions</span>
+            <div className="hidden sm:grid grid-cols-[2fr_1.5fr_1fr_1fr_1fr_auto] gap-4 px-5 py-3 border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              <span>Seller</span><span>Store</span><span>Category</span><span>Status</span><span>KYC</span><span>Actions</span>
             </div>
             <div className="divide-y divide-slate-100">
-              {filtered.map(s => (
-                <div key={s.id} className="grid grid-cols-1 sm:grid-cols-[2fr_1.5fr_1fr_1fr_auto] gap-3 sm:gap-4 items-center px-5 py-4 hover:bg-slate-50 transition-colors">
-                  {/* Seller */}
-                  <div>
-                    <p className="font-semibold text-slate-900 text-sm">{s.fullName}</p>
-                    <p className="text-xs text-slate-500">{s.email}</p>
-                    <p className="text-xs text-slate-400">{s.phone}</p>
+              {filtered.map(s => {
+                const kyc = kycStatus(s);
+                const kycOk = kyc.missingRequired.length === 0;
+                return (
+                  <div key={s.id} className="grid grid-cols-1 sm:grid-cols-[2fr_1.5fr_1fr_1fr_1fr_auto] gap-3 sm:gap-4 items-center px-5 py-4 hover:bg-slate-50 transition-colors">
+                    {/* Seller */}
+                    <div>
+                      <p className="font-semibold text-slate-900 text-sm">{s.fullName}</p>
+                      <p className="text-xs text-slate-500">{s.email}</p>
+                      <p className="text-xs text-slate-400">{s.phone}</p>
+                    </div>
+                    {/* Store */}
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">{s.storeName}</p>
+                      <p className="text-xs text-slate-400">{s.city ?? "—"}{s.state ? `, ${s.state}` : ""}</p>
+                    </div>
+                    {/* Category */}
+                    <div>
+                      <span className="text-xs font-semibold capitalize bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                        {s.storeCategory}
+                      </span>
+                    </div>
+                    {/* Status */}
+                    <div>
+                      <span className={`text-xs font-bold px-2 py-1 rounded-full ${STATUS_STYLES[s.status]}`}>
+                        {s.status === "PENDING" ? "Under Review" : s.status}
+                      </span>
+                    </div>
+                    {/* KYC */}
+                    <div className="flex items-center gap-1.5">
+                      {kycOk ? (
+                        <FiCheckCircle className="w-4 h-4 text-green-500" />
+                      ) : (
+                        <FiAlertCircle className="w-4 h-4 text-amber-500" />
+                      )}
+                      <span className={`text-xs font-medium ${kycOk ? "text-green-600" : "text-amber-600"}`}>
+                        {kyc.uploaded}/{kyc.total}
+                      </span>
+                    </div>
+                    {/* Actions */}
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => setViewing(s)}
+                        className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors" title="View details">
+                        <FiEye className="w-4 h-4" />
+                      </button>
+                      {s.status === "PENDING" && (
+                        <>
+                          <button
+                            onClick={() => handleApprove(s)}
+                            disabled={approveMut.isPending}
+                            title={kycOk ? "Approve" : "Missing required KYC documents"}
+                            className={`p-1.5 rounded-lg transition-colors ${
+                              kycOk
+                                ? "bg-green-50 text-green-600 hover:bg-green-100"
+                                : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                            }`}>
+                            <FiCheck className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => { setRejectModal(s); setRejectReason(""); }}
+                            className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors" title="Reject">
+                            <FiX className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  {/* Store */}
-                  <div>
-                    <p className="text-sm font-medium text-slate-800">{s.storeName}</p>
-                    <p className="text-xs text-slate-400">{s.city ?? "—"}, {s.state ?? ""}</p>
-                  </div>
-                  {/* Category */}
-                  <div>
-                    <span className="text-xs font-semibold capitalize bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
-                      {s.storeCategory}
-                    </span>
-                  </div>
-                  {/* Status */}
-                  <div>
-                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${STATUS_STYLES[s.status]}`}>
-                      {s.status}
-                    </span>
-                  </div>
-                  {/* Actions */}
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => setViewing(s)}
-                      className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
-                      title="View details"
-                    >
-                      <FiEye className="w-4 h-4" />
-                    </button>
-                    {s.status === "PENDING" && (
-                      <>
-                        <button
-                          onClick={() => approveMut.mutate(s.id)}
-                          disabled={approveMut.isPending}
-                          className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
-                          title="Approve"
-                        >
-                          <FiCheck className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => { setRejectModal(s); setRejectReason(""); }}
-                          className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
-                          title="Reject"
-                        >
-                          <FiX className="w-4 h-4" />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
       </div>
 
       {/* View detail modal */}
-      {viewing && (
-        <Modal
-          title={`${viewing.storeName}`}
-          open={!!viewing}
-          onClose={() => setViewing(null)}
-          size="lg"
-          footer={
-            viewing.status === "PENDING" ? (
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => { setRejectModal(viewing); setRejectReason(""); setViewing(null); }}
-                  className="flex items-center gap-2 px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50"
-                >
-                  <FiX className="w-4 h-4" /> Reject
-                </button>
-                <button
-                  onClick={() => approveMut.mutate(viewing.id)}
-                  disabled={approveMut.isPending}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-60"
-                >
-                  <FiCheck className="w-4 h-4" /> Approve Seller
-                </button>
+      {viewing && (() => {
+        const kyc = kycStatus(viewing);
+        const kycOk = kyc.missingRequired.length === 0;
+        return (
+          <Modal title={viewing.storeName} open={!!viewing} onClose={() => setViewing(null)} size="lg"
+            footer={
+              viewing.status === "PENDING" ? (
+                <div className="flex gap-3 justify-end">
+                  <button onClick={() => { setRejectModal(viewing); setRejectReason(""); setViewing(null); }}
+                    className="flex items-center gap-2 px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50">
+                    <FiX className="w-4 h-4" /> Reject
+                  </button>
+                  <button
+                    onClick={() => handleApprove(viewing)}
+                    disabled={approveMut.isPending || !kycOk}
+                    title={kycOk ? "Approve seller" : `Cannot approve: missing ${kyc.missingRequired.map(d => d.label).join(", ")}`}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-60">
+                    <FiCheck className="w-4 h-4" />
+                    {kycOk ? "Approve Seller" : "Missing KYC Documents"}
+                  </button>
+                </div>
+              ) : undefined
+            }
+          >
+            <div className="space-y-5 text-sm">
+              {/* Status */}
+              <div className="flex items-center gap-2">
+                <span className={`text-xs font-bold px-3 py-1 rounded-full ${STATUS_STYLES[viewing.status]}`}>
+                  {viewing.status === "PENDING" ? "Under Review" : viewing.status}
+                  {viewing.rejectionReason && `: ${viewing.rejectionReason}`}
+                </span>
               </div>
-            ) : undefined
-          }
-        >
-          <div className="space-y-5 text-sm">
-            {/* Status */}
-            <span className={`text-xs font-bold px-3 py-1 rounded-full ${STATUS_STYLES[viewing.status]}`}>
-              {viewing.status}
-              {viewing.rejectionReason && `: ${viewing.rejectionReason}`}
-            </span>
 
-            {/* Basic info */}
-            <div className="grid grid-cols-2 gap-3">
-              <InfoField icon={FiMail} label="Email" value={viewing.email} />
-              <InfoField icon={FiPhone} label="Phone" value={viewing.phone} />
-              <InfoField icon={FiShoppingCart} label="Store" value={viewing.storeName} />
-              <InfoField icon={FiFilter} label="Category" value={viewing.storeCategory} />
-              <InfoField icon={FiCalendar} label="Applied" value={new Date(viewing.createdAt).toLocaleDateString()} />
-              <InfoField icon={FiMapPin} label="Location" value={[viewing.addressLine, viewing.city, viewing.state].filter(Boolean).join(", ")} />
-            </div>
-
-            {/* Business docs */}
-            <div>
-              <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Business Details</p>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <span className="text-slate-500">GST</span><span className="font-medium">{viewing.gstNumber ?? "—"}</span>
-                <span className="text-slate-500">PAN</span><span className="font-medium">{viewing.panNumber ?? "—"}</span>
-                <span className="text-slate-500">Business Reg</span><span className="font-medium">{viewing.businessRegNumber ?? "—"}</span>
-              </div>
-            </div>
-
-            {/* Documents */}
-            <div>
-              <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Documents</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {[
-                  { label: "GST Certificate", url: viewing.gstCertificateUrl },
-                  { label: "PAN Card", url: viewing.panCardUrl },
-                  { label: "License", url: viewing.licenseUrl },
-                  { label: "Business Proof", url: viewing.businessProofUrl },
-                  { label: "ID Proof", url: viewing.idProofUrl },
-                ].map(({ label, url }) => (
-                  <div key={label} className={`p-2.5 rounded-lg border text-xs ${url ? "border-green-200 bg-green-50" : "border-slate-200 bg-slate-50"}`}>
-                    <FiFileText className={`w-4 h-4 mb-1 ${url ? "text-green-600" : "text-slate-400"}`} />
-                    <p className={`font-medium ${url ? "text-green-700" : "text-slate-500"}`}>{label}</p>
-                    {url ? (
-                      <a href={url} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline">View</a>
-                    ) : (
-                      <span className="text-slate-400">Not uploaded</span>
-                    )}
+              {/* KYC alert */}
+              {!kycOk && viewing.status === "PENDING" && (
+                <div className="flex items-start gap-2 p-3 rounded-xl border border-amber-300 bg-amber-50">
+                  <FiAlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-bold text-amber-800">Cannot approve yet</p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      Missing required documents: <strong>{kyc.missingRequired.map(d => d.label).join(", ")}</strong>
+                    </p>
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
+              )}
 
-            {/* Store images */}
-            {(viewing.logoUrl || viewing.bannerUrl) && (
+              {/* Basic info */}
               <div>
-                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Store Media</p>
-                <div className="flex gap-3">
-                  {viewing.logoUrl && (
-                    <img src={viewing.logoUrl} alt="Logo" className="w-16 h-16 rounded-xl object-cover border border-slate-200" />
-                  )}
-                  {viewing.bannerUrl && (
-                    <img src={viewing.bannerUrl} alt="Banner" className="h-16 rounded-xl object-cover border border-slate-200 flex-1" />
-                  )}
+                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Contact & Store</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <InfoField icon={FiMail} label="Email" value={viewing.email} />
+                  <InfoField icon={FiPhone} label="Phone" value={viewing.phone} />
+                  <InfoField icon={FiShoppingCart} label="Store" value={viewing.storeName} />
+                  <InfoField icon={FiCalendar} label="Applied" value={new Date(viewing.createdAt).toLocaleDateString("en-IN")} />
+                  <InfoField icon={FiMapPin} label="Location" value={[viewing.addressLine, viewing.city, viewing.state].filter(Boolean).join(", ")} />
+                  <InfoField icon={FiFileText} label="Description" value={viewing.description || "—"} />
                 </div>
               </div>
-            )}
-          </div>
-        </Modal>
-      )}
+
+              {/* Business docs */}
+              <div>
+                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Business Details</p>
+                <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 rounded-xl p-3">
+                  <span className="text-slate-500">GST Number</span><span className="font-medium">{viewing.gstNumber ?? "—"}</span>
+                  <span className="text-slate-500">PAN Number</span><span className="font-medium">{viewing.panNumber ?? "—"}</span>
+                  <span className="text-slate-500">Business Reg</span><span className="font-medium">{viewing.businessRegNumber ?? "—"}</span>
+                  <span className="text-slate-500">Bank</span><span className="font-medium">{viewing.bankName ?? "—"}</span>
+                  <span className="text-slate-500">IFSC</span><span className="font-medium">{viewing.bankIfsc ?? "—"}</span>
+                  <span className="text-slate-500">Account</span>
+                  <span className="font-medium">{viewing.bankAccountNumber ? `••••${viewing.bankAccountNumber.slice(-4)}` : "—"}</span>
+                </div>
+              </div>
+
+              {/* Documents */}
+              <div>
+                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">KYC Documents ({kyc.uploaded}/{kyc.total})</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {DOC_LIST.map(({ key, label, required }) => {
+                    const url = sellerDoc(viewing, key);
+                    return (
+                      <div key={key} className={`p-2.5 rounded-lg border text-xs ${url ? "border-green-200 bg-green-50" : required ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"}`}>
+                        <FiFileText className={`w-4 h-4 mb-1 ${url ? "text-green-600" : required ? "text-amber-500" : "text-slate-400"}`} />
+                        <p className={`font-medium ${url ? "text-green-700" : required ? "text-amber-700" : "text-slate-500"}`}>{label}</p>
+                        {required && !url && <p className="text-[10px] text-red-500 font-bold mt-0.5">Required</p>}
+                        {url ? (
+                          <a href={`http://localhost:8080${url}`} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline">View</a>
+                        ) : (
+                          <span className="text-slate-400">Not uploaded</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Store images */}
+              {(viewing.logoUrl || viewing.bannerUrl) && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Store Media</p>
+                  <div className="flex gap-3 flex-wrap">
+                    {viewing.logoUrl && (
+                      <div className="text-center">
+                        <img src={`http://localhost:8080${viewing.logoUrl}`} alt="Logo" className="w-20 h-20 rounded-xl object-cover border border-slate-200" />
+                        <p className="text-xs text-slate-500 mt-1">Logo</p>
+                      </div>
+                    )}
+                    {viewing.bannerUrl && (
+                      <div className="text-center flex-1">
+                        <img src={`http://localhost:8080${viewing.bannerUrl}`} alt="Banner" className="h-20 w-full rounded-xl object-cover border border-slate-200" />
+                        <p className="text-xs text-slate-500 mt-1">Banner</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </Modal>
+        );
+      })()}
 
       {/* Reject reason modal */}
-      <Modal
-        title="Reject Seller Application"
-        open={!!rejectModal}
-        onClose={() => setRejectModal(null)}
-        size="sm"
+      <Modal title="Reject Seller Application" open={!!rejectModal} onClose={() => setRejectModal(null)} size="sm"
         footer={
           <div className="flex justify-end gap-3">
             <button onClick={() => setRejectModal(null)} className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700">Cancel</button>
             <button
               onClick={() => rejectModal && rejectMut.mutate({ id: rejectModal.id, reason: rejectReason })}
               disabled={rejectMut.isPending || !rejectReason.trim()}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-red-700"
-            >
+              className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-red-700">
               Reject
             </button>
           </div>
@@ -345,13 +382,9 @@ export default function Sellers() {
       >
         <div className="space-y-3">
           <p className="text-sm text-slate-600">Please provide a reason for rejecting <strong>{rejectModal?.storeName}</strong>.</p>
-          <textarea
-            rows={4}
-            value={rejectReason}
-            onChange={e => setRejectReason(e.target.value)}
+          <textarea rows={4} value={rejectReason} onChange={e => setRejectReason(e.target.value)}
             placeholder="e.g. Incomplete documents, invalid GST number..."
-            className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/30 resize-none"
-          />
+            className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/30 resize-none" />
         </div>
       </Modal>
     </div>

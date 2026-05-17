@@ -1,13 +1,16 @@
 import { NavLink, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 import {
   FiGrid, FiUsers, FiShoppingBag, FiBox, FiShoppingCart,
   FiTag, FiTruck, FiLogOut, FiShield, FiChevronRight, FiMapPin, FiLayout, FiStar,
-  FiCreditCard, FiArrowDownCircle
+  FiCreditCard, FiArrowDownCircle, FiBell
 } from "react-icons/fi";
+import { fetchNotifications, getUnreadCount } from "../lib/notificationsApi";
 
 const navItems = [
   { to: "/", icon: FiGrid, label: "Dashboard" },
+  { to: "/notifications", icon: FiBell, label: "Notifications", badge: true },
   { to: "/orders", icon: FiShoppingBag, label: "Orders" },
   { to: "/users", icon: FiUsers, label: "Users" },
   { to: "/products", icon: FiBox, label: "Products" },
@@ -26,6 +29,14 @@ const navItems = [
 export default function Sidebar() {
   const { admin, logout } = useAuth();
   const navigate = useNavigate();
+
+  const { data: notifItems = [] } = useQuery({
+    queryKey: ["admin", "notifications"],
+    queryFn: fetchNotifications,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const unread = getUnreadCount(notifItems);
 
   const handleLogout = () => { logout(); navigate("/login"); };
 
@@ -46,7 +57,7 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {navItems.map(({ to, icon: Icon, label }) => (
+        {navItems.map(({ to, icon: Icon, label, badge }) => (
           <NavLink
             key={to}
             to={to}
@@ -63,7 +74,12 @@ export default function Sidebar() {
               <>
                 <Icon className="w-4 h-4 shrink-0" />
                 <span className="flex-1">{label}</span>
-                {isActive && <FiChevronRight className="w-3 h-3 opacity-60" />}
+                {badge && unread > 0 && (
+                  <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                    {unread > 99 ? "99+" : unread}
+                  </span>
+                )}
+                {isActive && !badge && <FiChevronRight className="w-3 h-3 opacity-60" />}
               </>
             )}
           </NavLink>

@@ -7,10 +7,14 @@ import PageHeader from "../../components/PageHeader";
 import Modal from "../../components/Modal";
 import {
   FiPlus, FiEdit2, FiTrash2, FiToggleLeft, FiToggleRight,
-  FiMapPin, FiGlobe, FiInfo, FiRotateCcw, FiTrash
+  FiMapPin, FiGlobe, FiInfo, FiRotateCcw, FiTrash, FiZoomIn, FiZoomOut,
 } from "react-icons/fi";
 import { toast } from "sonner";
-import { MapContainer, TileLayer, Polygon, useMapEvents } from "react-leaflet";
+import {
+  MapContainer, TileLayer, Polygon, Marker, Polyline,
+  useMapEvents, useMap,
+} from "react-leaflet";
+import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 // Nainital center
@@ -27,26 +31,70 @@ const emptyZone = (): Partial<DeliveryZone> => ({
   polygon: [],
 });
 
-// Click handler inside the map
-function PolygonDrawer({
+// Custom small dot marker for polygon vertices
+const dotIcon = L.divIcon({
+  className: "",
+  html: `<div style="width:10px;height:10px;border-radius:50%;background:#4f46e5;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4)"></div>`,
+  iconSize: [10, 10],
+  iconAnchor: [5, 5],
+});
+
+const firstDotIcon = L.divIcon({
+  className: "",
+  html: `<div style="width:14px;height:14px;border-radius:50%;background:#16a34a;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4)"></div>`,
+  iconSize: [14, 14],
+  iconAnchor: [7, 7],
+});
+
+// Click handler + zoom controls inside the map
+function MapControls({
   points,
   onChange,
+  drawing,
 }: {
   points: [number, number][];
   onChange: (pts: [number, number][]) => void;
+  drawing: boolean;
 }) {
+  const map = useMap();
+
   useMapEvents({
     click(e) {
+      if (!drawing) return;
       onChange([...points, [e.latlng.lat, e.latlng.lng]]);
     },
   });
-  return null;
+
+  return (
+    <div
+      style={{ position: "absolute", top: 10, right: 10, zIndex: 1000 }}
+      className="flex flex-col gap-1.5"
+    >
+      <button
+        type="button"
+        onClick={() => map.zoomIn()}
+        className="flex h-8 w-8 items-center justify-center rounded-lg bg-white shadow-md border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors"
+        title="Zoom in"
+      >
+        <FiZoomIn className="w-4 h-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => map.zoomOut()}
+        className="flex h-8 w-8 items-center justify-center rounded-lg bg-white shadow-md border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors"
+        title="Zoom out"
+      >
+        <FiZoomOut className="w-4 h-4" />
+      </button>
+    </div>
+  );
 }
 
 export default function Zones() {
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Partial<DeliveryZone> | null>(null);
+  const [drawing, setDrawing] = useState(false);
 
   const { data: zones = [], isLoading } = useQuery({
     queryKey: ["admin", "zones"],
@@ -107,6 +155,13 @@ export default function Zones() {
   };
 
   const hasEverywhere = zones.some((z) => z.everywhere && z.active);
+  const isClosed = mapPoints.length >= 3;
+
+  const openModal = (zone: Partial<DeliveryZone>) => {
+    setEditing(zone);
+    setDrawing(!zone.everywhere);
+    setModalOpen(true);
+  };
 
   return (
     <div className="min-h-full">
@@ -115,7 +170,7 @@ export default function Zones() {
         subtitle={`${zones.length} zone${zones.length !== 1 ? "s" : ""}`}
         action={
           <button
-            onClick={() => { setEditing(emptyZone()); setModalOpen(true); }}
+            onClick={() => openModal(emptyZone())}
             className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
           >
             <FiPlus className="w-4 h-4" /> Add Zone
@@ -211,7 +266,7 @@ export default function Zones() {
                     {z.active ? <FiToggleRight className="w-4 h-4" /> : <FiToggleLeft className="w-4 h-4" />}
                   </button>
                   <button
-                    onClick={() => { setEditing({ ...z }); setModalOpen(true); }}
+                    onClick={() => openModal({ ...z })}
                     className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
                   >
                     <FiEdit2 className="w-3.5 h-3.5" />
@@ -325,7 +380,7 @@ export default function Zones() {
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">%</span>
               </div>
               <p className="text-[10px] text-slate-400 mt-1">
-                Set 0 to use the global default tax rate (configured in server settings)
+                Set 0 to use the global default tax rate
               </p>
             </div>
 
@@ -335,7 +390,7 @@ export default function Zones() {
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => setEditing(prev => ({ ...prev!, everywhere: true }))}
+                  onClick={() => { setEditing(prev => ({ ...prev!, everywhere: true })); setDrawing(false); }}
                   className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 transition-colors ${editing.everywhere ? "border-primary-600 bg-primary-50" : "border-slate-200 hover:border-slate-300"}`}
                 >
                   <FiGlobe className={`w-5 h-5 ${editing.everywhere ? "text-primary-600" : "text-slate-400"}`} />
@@ -344,7 +399,7 @@ export default function Zones() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setEditing(prev => ({ ...prev!, everywhere: false }))}
+                  onClick={() => { setEditing(prev => ({ ...prev!, everywhere: false })); setDrawing(true); }}
                   className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 transition-colors ${!editing.everywhere ? "border-primary-600 bg-primary-50" : "border-slate-200 hover:border-slate-300"}`}
                 >
                   <FiMapPin className={`w-5 h-5 ${!editing.everywhere ? "text-primary-600" : "text-slate-400"}`} />
@@ -354,17 +409,28 @@ export default function Zones() {
               </div>
             </div>
 
-            {/* Map polygon drawer (shown only for polygon type) */}
+            {/* Map polygon drawer */}
             {!editing.everywhere && (
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-xs font-medium text-slate-600">
                     Draw Zone Boundary
                     <span className="ml-2 text-[10px] text-slate-400 font-normal">
-                      Click on the map to add points ({mapPoints.length} point{mapPoints.length !== 1 ? "s" : ""})
+                      ({mapPoints.length} point{mapPoints.length !== 1 ? "s" : ""}{isClosed ? " — polygon ready" : `, need ${Math.max(0, 3 - mapPoints.length)} more`})
                     </span>
                   </label>
                   <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setDrawing(d => !d)}
+                      className={`flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-md transition-colors ${
+                        drawing
+                          ? "bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      {drawing ? "✏️ Drawing" : "✋ Paused"}
+                    </button>
                     <button
                       type="button"
                       onClick={undoPoint}
@@ -384,36 +450,70 @@ export default function Zones() {
                   </div>
                 </div>
 
-                {mapPoints.length < 3 && mapPoints.length > 0 && (
+                {mapPoints.length > 0 && mapPoints.length < 3 && (
                   <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-2 py-1 mb-2">
                     Need at least 3 points to form a polygon ({3 - mapPoints.length} more needed)
                   </p>
                 )}
 
-                <div className="rounded-xl overflow-hidden border border-slate-300 cursor-crosshair" style={{ height: 320 }}>
+                {isClosed && (
+                  <p className="text-[10px] text-green-700 bg-green-50 border border-green-200 rounded-md px-2 py-1 mb-2">
+                    ✓ Polygon is ready. You can add more points or save.
+                  </p>
+                )}
+
+                <div
+                  className={`rounded-xl overflow-hidden border-2 transition-colors ${drawing ? "border-indigo-400 cursor-crosshair" : "border-slate-300 cursor-default"}`}
+                  style={{ height: 360 }}
+                >
                   <MapContainer
                     center={mapPoints.length > 0 ? mapPoints[0] : NAINITAL_CENTER}
                     zoom={14}
+                    zoomControl={false}
                     style={{ height: "100%", width: "100%" }}
                     key={editing.id ?? "new"}
                   >
                     <TileLayer
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
-                    {mapPoints.length >= 3 && (
+
+                    {/* Completed polygon fill */}
+                    {isClosed && (
                       <Polygon
                         positions={mapPoints}
-                        pathOptions={{ color: "#4f46e5", fillColor: "#4f46e5", fillOpacity: 0.2, weight: 2 }}
+                        pathOptions={{ color: "#4f46e5", fillColor: "#4f46e5", fillOpacity: 0.15, weight: 2.5, dashArray: undefined }}
                       />
                     )}
-                    <PolygonDrawer points={mapPoints} onChange={handleMapClick} />
+
+                    {/* In-progress line (not yet closed) */}
+                    {!isClosed && mapPoints.length >= 2 && (
+                      <Polyline
+                        positions={mapPoints}
+                        pathOptions={{ color: "#4f46e5", weight: 2, dashArray: "6 4" }}
+                      />
+                    )}
+
+                    {/* Vertex markers */}
+                    {mapPoints.map((pt, i) => (
+                      <Marker
+                        key={i}
+                        position={pt}
+                        icon={i === 0 ? firstDotIcon : dotIcon}
+                      />
+                    ))}
+
+                    <MapControls points={mapPoints} onChange={handleMapClick} drawing={drawing} />
                   </MapContainer>
                 </div>
 
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Click on the map to place boundary points. The polygon closes automatically.
-                </p>
+                <div className="flex items-center justify-between mt-1.5">
+                  <p className="text-[10px] text-slate-400">
+                    {drawing
+                      ? "Click on the map to add boundary points. Green dot = first point. Use Undo to remove last point."
+                      : "Toggle Drawing to add more points. Pinch or use ± buttons to zoom."}
+                  </p>
+                </div>
               </div>
             )}
 
