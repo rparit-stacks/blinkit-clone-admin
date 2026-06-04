@@ -18,7 +18,7 @@ Internal admin dashboard. Manages the entire NainiStore platform: users, orders,
 ## Environment
 Create `.env.local` before running:
 ```
-VITE_API_BASE_URL=https://nainistore.com
+VITE_API_BASE_URL=https://www.nainistore.in
 ```
 
 ## Dev
@@ -87,7 +87,7 @@ Credits/debits via dedicated endpoints. Withdrawals need manual approval with UT
 ## Test Plan (before merge)
 - [ ] `bun run build` zero errors
 - [ ] `bun run lint` zero warnings
-- [ ] Login against nainistore.com, dashboard stats load
+- [ ] Login against www.nainistore.in, dashboard stats load
 - [ ] Create / edit / delete a product; approve a pending product
 - [ ] Assign delivery partner to an order
 
