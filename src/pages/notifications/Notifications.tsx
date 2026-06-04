@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { FiBell, FiChevronLeft, FiCheck, FiSend, FiX, FiAlertTriangle, FiGift } from "react-icons/fi";
+import { FiBell, FiChevronLeft, FiCheck, FiSend, FiX } from "react-icons/fi";
 import {
   fetchNotifications,
   markAllNotificationsRead,
